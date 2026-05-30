@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>爱心+波浪流光拖尾（和参考图一致）</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="heartCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('heartCanvas');
+        const ctx = canvas.getContext('2d');
+        let w = canvas.width = window.innerWidth;
+        let h = canvas.height = window.innerHeight;
+
+        // 窗口自适应
+        window.addEventListener('resize', () => {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+        });
+
+        // 爱心参数方程（生成轮廓点）
+        const heartScale = Math.min(w, h) * 0.022;
+        const heartPoints = [];
+        const pointCount = 800;
+        for (let i = 0; i < pointCount; i++) {
+            const t = (i / pointCount) * Math.PI * 2;
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+            heartPoints.push({
+                x: w/2 + x * heartScale,
+                y: h/2 + y * heartScale
+            });
+        }
+
+        // 粒子类：从爱心轮廓点出发，向外延伸波浪拖尾
+        class StreamParticle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                // 从爱心轮廓随机点出发
+                const idx = Math.floor(Math.random() * pointCount);
+                this.baseX = heartPoints[idx].x;
+                this.baseY = heartPoints[idx].y;
+
+                // 初始位置在爱心轮廓点上
+                this.x = this.baseX;
+                this.y = this.baseY;
+
+                // 运动方向：向外（从爱心中心指向轮廓点的方向）
+                const dx = this.baseX - w/2;
+                const dy = this.baseY - h/2;
+                this.angle = Math.atan2(dy, dx);
+
+                // 向下的线条，调整方向为向下偏
+                if (this.baseY > h/2 + heartScale * 0.5) {
+                    this.angle += Math.PI * 0.3;
+                }
+
+                this.speed = Math.random() * 1.2 + 0.3;
+                this.life = 1;
+                this.waveOffset = Math.random() * Math.PI * 2;
+                this.color = this.getColor();
+                this.size = Math.random() * 1.2 + 0.3;
+                this.trail = [];
+            }
+
+            getColor() {
+                const colors = [
+                    '#ffffff',
+                    '#fff0f8',
+                    '#ffd6e7',
+                    '#ffb6d6',
+                    '#ff99cc',
+                    '#ff80bf',
+                    '#ff66b3'
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update(time) {
+                this.life -= 0.004;
+                if (this.life <= 0) {
+                    this.reset();
+                    return;
+                }
+
+                // 记录轨迹，用于绘制拖尾
+                this.trail.push({x: this.x, y: this.y});
+                if (this.trail.length > 40) this.trail.shift();
+
+                // 波浪运动，模拟水流摆动
+                const wave = Math.sin(time * 0.03 + this.waveOffset) * 15 * this.life;
+                const perpAngle = this.angle + Math.PI / 2;
+                const waveX = Math.cos(perpAngle) * wave;
+                const waveY = Math.sin(perpAngle) * wave;
+
+                // 更新位置
+                this.x += Math.cos(this.angle) * this.speed + waveX * 0.05;
+                this.y += Math.sin(this.angle) * this.speed + waveY * 0.05;
+
+                // 透明度：靠近爱心时最亮，远离时逐渐变淡
+                this.alpha = this.life;
+            }
+
+            draw() {
+                // 绘制拖尾线条（参考图的水流拉丝效果）
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    ctx.strokeStyle = this.color;
+                    ctx.globalAlpha = this.alpha * 0.3;
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+
+                // 绘制粒子光点
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.alpha;
+                ctx.fill();
+
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // 创建粒子：爱心本身的光点 + 向外延伸的流光
+        const particles = [];
+        const particleCount = 2000;
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new StreamParticle());
+        }
+
+        // 动画循环
+        let time = 0;
+        function animate() {
+            // 半透明背景，实现拖影效果（参考图的朦胧感）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
+            ctx.fillRect(0, 0, w, h);
+
+            // 绘制爱心轮廓（保证中心爱心清晰）
+            ctx.beginPath();
+            for (let i = 0; i < heartPoints.length; i++) {
+                const p = heartPoints[i];
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            }
+            ctx.strokeStyle = '#ffb6d6';//粉色#ffb6d6，蓝色#ffffff，紫色#c8a2ff，白色#fff
+            ctx.globalAlpha = 0.6;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            // 居中绘制文字
+            ctx.save();
+            // 字体样式：大小、字体、不加粗
+            ctx.font = "28px Microsoft YaHei";
+            // 文字颜色（可自行改色值，粉色#ffb6d6，白色#ffffff，紫色#c8a2ff，极浅蓝#e6f2ff，浅天蓝#cce0ff，淡蓝#b3d9ff，标准天蓝#80bfff）
+            ctx.fillStyle = "#ffb6d6";
+            // 文字水平、垂直居中
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            ctx.shadowColor = "#c8a2ff";
+            ctx.shadowBlur = 5;
+
+            // 绘制文字，修改双引号内内容即可换文字
+            ctx.fillText("心心❤️锋锋", w / 2, h / 2);
+
+            ctx.shadowBlur = 0;
+            ctx.restore();
+
+
+            // 更新并绘制所有粒子
+            particles.forEach(p => {
+                p.update(time);
+                p.draw();
+            });
+
+            time++;
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
